@@ -1,55 +1,197 @@
 package com.sergiopla.demomusic.views;
 
-import android.app.IntentService;
+import android.arch.lifecycle.Lifecycle;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.view.View;
+import android.support.v4.content.ContextCompat;
+import android.support.v7.app.AppCompatActivity;
 import android.widget.Button;
+import android.widget.Toast;
 
-import com.google.android.youtube.player.YouTubeBaseActivity;
-import com.google.android.youtube.player.YouTubeInitializationResult;
-import com.google.android.youtube.player.YouTubePlayer;
-import com.google.android.youtube.player.YouTubePlayerView;
-import com.sergiopla.demomusic.Player.PlayerConfig;
+import com.pierfrancescosoffritti.youtubeplayer.player.AbstractYouTubePlayerListener;
+import com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayerFullScreenListener;
+import com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayerView;
+import com.pierfrancescosoffritti.youtubeplayer.ui.menu.MenuItem;
+import com.sergiopla.demomusic.Player.FullScreenManager;
 import com.sergiopla.demomusic.R;
 
-public class PlayerActivity extends YouTubeBaseActivity {
+import java.util.Random;
 
-    YouTubePlayerView youTubePlayerView;
-    Button button;
-    YouTubePlayer.OnInitializedListener onInitializedListener;
+public class PlayerActivity extends AppCompatActivity {
+
+    private YouTubePlayerView youTubePlayerView;
+    private FullScreenManager fullScreenManager = new FullScreenManager(this);
+
+    private String[] videoIds = {"6JYIGclVQdw", "LvetJ9U_tVY"};
+
+    // a list of videos not available in some countries, to test if they're handled gracefully.
+    // private String[] nonPlayableVideoIds = { "sop2V_MREEI" };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_player);
 
-        youTubePlayerView =findViewById(R.id.youtube_player);
-        button = findViewById(R.id.button);
+        youTubePlayerView = findViewById(R.id.youtube_player_view);
 
+        initYouTubePlayerView();
+    }
 
-        onInitializedListener = new YouTubePlayer.OnInitializedListener() {
+    @Override
+    public void onConfigurationChanged(Configuration newConfiguration) {
+        super.onConfigurationChanged(newConfiguration);
+        youTubePlayerView.getPlayerUIController().getMenu().dismiss();
+    }
 
+    @Override
+    public void onBackPressed() {
+        if (youTubePlayerView.isFullScreen())
+            youTubePlayerView.exitFullScreen();
+        else
+            super.onBackPressed();
+    }
+
+    private void initYouTubePlayerView() {
+        initPlayerMenu();
+
+        // The player will automatically release itself when the activity is destroyed.
+        // The player will automatically pause when the activity is paused
+        // If you don't add YouTubePlayerView as a lifecycle observer, you will have to release it manually.
+        getLifecycle().addObserver(youTubePlayerView);
+
+        youTubePlayerView.initialize(youTubePlayer -> {
+
+            youTubePlayer.addListener(new AbstractYouTubePlayerListener() {
+                @Override
+                public void onReady() {
+                    loadVideo(youTubePlayer, videoIds[0]);
+                }
+            });
+
+            addFullScreenListenerToPlayer(youTubePlayer);
+            setPlayNextVideoButtonClickListener(youTubePlayer);
+
+        }, true);
+    }
+
+    /**
+     * Shows the menu button in the player and adds an item to it.
+     */
+    private void initPlayerMenu() {
+        youTubePlayerView.getPlayerUIController().showMenuButton(true);
+        youTubePlayerView.getPlayerUIController().getMenu().addItem(
+                new MenuItem("example", R.drawable.ic_settings_24dp, (view) -> Toast.makeText(this, "item clicked", Toast.LENGTH_SHORT).show())
+        );
+    }
+
+    /**
+     * Load a video if the activity is resumed, cue it otherwise.
+     * See difference between {@link com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayer#cueVideo(String, float)} and {@link com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayer#loadVideo(String, float)}
+     *
+     * With this library is possible to play videos even if the player is not visible.
+     * But this goes against YouTube's terms of service therefore,
+     * if you plan to publish your app on the Play Store, always pause the video when the player is not visible.
+     * If you don't intend to publish your app on the Play Store you can play and pause whenever you want.
+     */
+    private void loadVideo(com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayer youTubePlayer, String videoId) {
+        if(getLifecycle().getCurrentState() == Lifecycle.State.RESUMED)
+            youTubePlayer.loadVideo(videoId, 0);
+        else
+            youTubePlayer.cueVideo(videoId, 0);
+
+//        setVideoTitle(youTubePlayerView.getPlayerUIController(), videoId);
+    }
+
+    private void addFullScreenListenerToPlayer(final com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayer youTubePlayer) {
+        youTubePlayerView.addFullScreenListener(new YouTubePlayerFullScreenListener() {
             @Override
-            public void onInitializationSuccess(YouTubePlayer.Provider provider, YouTubePlayer youTubePlayer, boolean b) {
+            public void onYouTubePlayerEnterFullScreen() {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                fullScreenManager.enterFullScreen();
 
-                youTubePlayer.loadVideo("Hce74cEAAaE");
-
-                youTubePlayer.play();
+                addCustomActionToPlayer(youTubePlayer);
             }
 
             @Override
-            public void onInitializationFailure(YouTubePlayer.Provider provider, YouTubeInitializationResult youTubeInitializationResult) {
+            public void onYouTubePlayerExitFullScreen() {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                fullScreenManager.exitFullScreen();
 
-            }
-        };
-
-        button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-
-                youTubePlayerView.initialize(PlayerConfig.API_KEY, onInitializedListener);
+                removeCustomActionFromPlayer();
             }
         });
     }
+
+    /**
+     * This method adds a new custom action to the player.
+     * Custom actions are shown next to the Play/Pause button in the middle of the player.
+     */
+    private void addCustomActionToPlayer(com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayer youTubePlayer) {
+        Drawable customActionIcon = ContextCompat.getDrawable(this, R.drawable.ic_pause_36dp);
+
+        youTubePlayerView.getPlayerUIController().setCustomAction1(customActionIcon, view -> {
+            if(youTubePlayer != null) youTubePlayer.pause();
+        });
+    }
+
+    private void removeCustomActionFromPlayer() {
+        youTubePlayerView.getPlayerUIController().showCustomAction1(false);
+    }
+
+    /**
+     * Set a click listener on the "Play next video" button
+     */
+    private void setPlayNextVideoButtonClickListener(final com.pierfrancescosoffritti.youtubeplayer.player.YouTubePlayer youTubePlayer) {
+        Button playNextVideoButton = findViewById(R.id.next_video_button);
+
+        playNextVideoButton.setOnClickListener(view -> {
+            String videoId = videoIds[new Random().nextInt(videoIds.length)];
+            loadVideo(youTubePlayer, videoId);
+        });
+    }
+//
+//    /**
+//     * This method is called every time a new video is being loaded/cued.
+//     * It uses the YouTube Data APIs to fetch the video title from the video ID.
+//     * The YouTube Data APIs are nothing more then a wrapper over the YouTube REST API.
+//     * You can learn more at the following urls:
+//     * https://developers.google.com/youtube/v3/docs/videos/list
+//     * https://developers.google.com/apis-explorer/#p/youtube/v3/youtube.videos.list?part=snippet&id=6JYIGclVQdw&fields=items(snippet(title))&_h=9&
+//     *
+//     * This method does network operations, therefore it cannot be executed on the main thread.
+//     * For simplicity I have used RxJava to implement the asynchronous logic. You can use whatever you want: Threads, AsyncTask ecc.
+//     */
+//    @SuppressLint("CheckResult")
+//    private void setVideoTitle(PlayerUIController playerUIController, String videoId) {
+//
+//        Single<String> observable = YouTubeDataEndpoint.getVideoTitleFromYouTubeDataAPIs(videoId);
+//
+//        observable
+//                .subscribeOn(Schedulers.io())
+//                .observeOn(AndroidSchedulers.mainThread())
+//                .subscribe(
+//                        videoTitle -> playerUIController.setVideoTitle(videoTitle),
+//                        error -> { Log.e(getClass().getSimpleName(), "Can't retrieve video title, are you connected to the internet?"); }
+//                );
+//    }
+boolean shouldRecreate;
+@Override
+protected void onResume() {
+    super.onResume();
+    if (shouldRecreate){
+        finish();
+        startActivity(new Intent(this, MainActivity.class));
+    }
 }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode == 0){
+            shouldRecreate = true;
+        }
+    }}
+

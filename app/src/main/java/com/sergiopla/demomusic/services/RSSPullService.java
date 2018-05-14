@@ -2,18 +2,18 @@ package com.sergiopla.demomusic.services;
 
 import android.app.IntentService;
 import android.content.Intent;
+import android.support.annotation.Nullable;
 
-import com.google.android.youtube.player.YouTubeApiServiceUtil;
-import com.google.android.youtube.player.YouTubeBaseActivity;
-import com.google.android.youtube.player.YouTubePlayer;
-
-import java.util.List;
-
-public class RSSPullService extends IntentService implements YouTubePlayer {
+public class RSSPullService extends IntentService  {
     public RSSPullService(String name) {
         super(name);
     }
 
+    @Override
+    protected void onHandleIntent(@Nullable Intent intent) {
+
+    }
+/*
     @Override
     public void onCreate() {
         super.onCreate();
@@ -200,4 +200,5 @@ public class RSSPullService extends IntentService implements YouTubePlayer {
     public void setPlaybackEventListener(PlaybackEventListener playbackEventListener) {
 
     }
+    */
 }
